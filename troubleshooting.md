@@ -103,7 +103,27 @@
 - Actual output: PostgreSQL logged `password authentication failed for user "barq_app"`; the two configuration files contained different password values.
 - Failed attempt and what changed the investigation: Port probes showed `postgres:5432` reachable, but `/ready` still failed, so the investigation moved from networking to authentication.
 - Root cause: PostgreSQL credentials are inconsistent between the app and the database service.
-- Fix: Deferred to the second fixing iteration.
-- Retest evidence: `fix-1-http-health.txt` shows `/ready` HTTP 503; `fix-1-runtime-logs.txt` contains the authentication failure.
-- Related commit: fix-the-initial-investigation
-- Remaining uncertainty: `/ready` must return HTTP 200 after the credentials match.
+- Fix: `POSTGRES_PASSWORD` in `docker-compose.yml` was changed to match `config/app.env`.
+- Retest evidence: `fix-postgres-cred-app-probes.txt` shows `/ready` HTTP 200 for both apps with PostgreSQL and Redis ready.
+- Related commit: postgres-cred-fix
+- Remaining uncertainty: The credential mismatch is resolved; public requests still need separate NGINX upstream testing.
+
+## 2026-09-12 - NGINX could not reach the application upstreams
+
+- Symptom: After the public port mapping was corrected, NGINX returned HTTP 502 for `/`, `/health`, `/ready`, and `/instance`.
+- Hypothesis: The apps bind to `127.0.0.1`, while NGINX proxies to `app-01:8080` and `app-02:8080` over the Compose network.
+- Command or test:
+
+  ```powershell
+  Get-Content evidence/local/fix-postgres-cred-http-health.txt
+  rg -n "APP_HOST|APP_PORT" docker-compose.yml
+  rg -n "server app-|proxy_pass" nginx/nginx.conf
+  ```
+
+- Actual output: `fix-postgres-cred-http-health.txt` records HTTP 502 Bad Gateway for all four public requests. `docker-compose.yml` sets `APP_HOST: "127.0.0.1"`; NGINX targets `app-01:8080` and `app-02:8080`.
+- Failed attempt and what changed the investigation: Correcting the public port changed the empty reply into an NGINX 502, isolating the remaining failure to the upstream connection.
+- Root cause: The application bind address prevents NGINX from reaching the upstream services through the Compose network.
+- Fix: Deferred to Part 2.
+- Retest evidence: `fix-postgres-cred-http-health.txt` shows 502 for all four paths.
+- Related commit: Pending fix.
+- Remaining uncertainty: Retest the public paths after the application bind and upstream settings are corrected.
