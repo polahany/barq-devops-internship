@@ -123,7 +123,7 @@
 - Actual output: `fix-postgres-cred-http-health.txt` records HTTP 502 Bad Gateway for all four public requests. `docker-compose.yml` sets `APP_HOST: "127.0.0.1"`; NGINX targets `app-01:8080` and `app-02:8080`.
 - Failed attempt and what changed the investigation: Correcting the public port changed the empty reply into an NGINX 502, isolating the remaining failure to the upstream connection.
 - Root cause: The application bind address prevents NGINX from reaching the upstream services through the Compose network.
-- Fix: Deferred to Part 2.
-- Retest evidence: `fix-postgres-cred-http-health.txt` shows 502 for all four paths.
-- Related commit: Pending fix.
-- Remaining uncertainty: Retest the public paths after the application bind and upstream settings are corrected.
+- Fix: `APP_HOST` changed from `127.0.0.1` to `0.0.0.0`; NGINX upstreams remain `app-01:8080` and `app-02:8080`.
+- Retest evidence: `fix-nginx-upstream-status.txt` shows healthy app containers, and `fix-nginx-upstream-http-health.txt` shows HTTP 200 for all four public paths.
+- Related commit: fix-nginx-upstream
+- Remaining uncertainty: Repeat `/instance` requests through NGINX to confirm traffic reaches both app instances.
