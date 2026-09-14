@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 
 
-PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8080")
+PUBLIC_PORT = os.getenv("PUBLIC_PORT", "8090")
 BASE_URL = os.getenv("BASE_URL", f"http://127.0.0.1:{PUBLIC_PORT}")
 failures = 0
 
@@ -98,16 +98,16 @@ def main():
             check(f"GET {path}", False, str(error))
 
     identities = set()
-    for _ in range(40):
+    for _ in range(60):
         try:
             status, body = request_json("/instance")
             if status == 200:
                 identities.add(body.get("instance_id"))
         except (OSError, json.JSONDecodeError):
             pass
-        if {"app-01", "app-02"}.issubset(identities):
+        if {"app-01", "app-02" , "app-03"}.issubset(identities):
             break
-    check("both application backends", {"app-01", "app-02"}.issubset(identities), str(sorted(identities)))
+    check("both application backends", {"app-01", "app-02" , "app-03"}.issubset(identities), str(sorted(identities)))
 
     title = f"validation-{int(time.time())}"
     try:
@@ -132,23 +132,25 @@ def main():
     except (OSError, json.JSONDecodeError) as error:
         check("Redis counter increases", False, str(error))
 
-    for container in ("app-01", "app-02", "nginx", "postgres", "redis"):
+    for container in ("app-01", "app-02","app-03" , "nginx", "postgres", "redis"):
         health = container_health(container)
         check(f"{container} container health", health == "healthy", health)
 
     nginx_ports = published_ports("nginx")
     check("NGINX publishes the public port", f":{PUBLIC_PORT}" in nginx_ports, nginx_ports)
-    for container in ("app-01", "app-02", "postgres", "redis"):
+    for container in ("app-01", "app-02","app-03" , "postgres", "redis"):
         check(f"{container} has no published ports", not published_ports(container))
 
     app_01_networks = container_networks("app-01")
     app_02_networks = container_networks("app-02")
+    app_03_networks = container_networks("app-03")
     nginx_networks = container_networks("nginx")
     postgres_networks = container_networks("postgres")
     redis_networks = container_networks("redis")
 
     check("app-01 uses frontend and backend", any(name.endswith("_frontend") for name in app_01_networks) and any(name.endswith("_backend") for name in app_01_networks))
     check("app-02 uses frontend and backend", any(name.endswith("_frontend") for name in app_02_networks) and any(name.endswith("_backend") for name in app_02_networks))
+    check("app-03 uses frontend and backend", any(name.endswith("_frontend") for name in app_03_networks) and any(name.endswith("_backend") for name in app_03_networks))
     check("NGINX uses frontend only", any(name.endswith("_frontend") for name in nginx_networks) and not any(name.endswith("_backend") for name in nginx_networks))
     check("PostgreSQL uses backend only", any(name.endswith("_backend") for name in postgres_networks) and not any(name.endswith("_frontend") for name in postgres_networks))
     check("Redis uses backend only", any(name.endswith("_backend") for name in redis_networks) and not any(name.endswith("_frontend") for name in redis_networks))

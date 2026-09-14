@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 
 
-BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8080")
+BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:8090")
 TARGET = "app-01"
 REQUEST_COUNT = 40
 

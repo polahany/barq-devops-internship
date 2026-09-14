@@ -50,9 +50,10 @@ jobs:
         run: |
           ready=0
           for attempt in $(seq 1 60); do
-            if curl --fail --silent --show-error http://127.0.0.1:8080/ready > /tmp/barq-ready.json \
+            if curl --fail --silent --show-error http://127.0.0.1:8090/ready > /tmp/barq-ready.json \
               && [ "$(docker inspect --format '{{.State.Health.Status}}' app-01)" = "healthy" ] \
               && [ "$(docker inspect --format '{{.State.Health.Status}}' app-02)" = "healthy" ] \
+              && [ "$(docker inspect --format '{{.State.Health.Status}}' app-03)" = "healthy" ] \
               && [ "$(docker inspect --format '{{.State.Health.Status}}' nginx)" = "healthy" ] \
               && [ "$(docker inspect --format '{{.State.Health.Status}}' postgres)" = "healthy" ] \
               && [ "$(docker inspect --format '{{.State.Health.Status}}' redis)" = "healthy" ]; then
