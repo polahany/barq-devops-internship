@@ -15,7 +15,7 @@ Hidden issue types and count are not disclosed. Investigate this project; do not
 - Flask API, PostgreSQL, Redis, Docker and NGINX starter files.
 - Three historical logs, a question template and documentation templates.
 - App-only tests and a recorded challenge script.
-- Validation and failure-test scripts for Part 3; backup/restore still needs to be completed.
+- Validation, failure-test, backup, and restore scripts for Part 3.
 
 Use synthetic lab accounts/data only. Supplied values are for this disposable exercise,
 never for real services. Keep the lab on your local machine; do not expose it publicly.
@@ -79,6 +79,20 @@ docker compose -p barq-assessment ps
 ```
 
 Expected proof: the PostgreSQL container ID changes, the named volume is mounted at `/var/lib/postgresql/data`, readiness returns `200`, and the record with the same timestamped title is found afterward. Do not run `docker compose down -v` during this test because it deletes the volume.
+
+## Backup and restore proof
+
+Run the shell scripts from WSL or Git Bash while the Compose services are healthy. The backup is a PostgreSQL custom-format dump. The restore script uses a separate `barq_restore_test` database, so it does not overwrite the working database.
+
+```bash
+MARKER="backup-$(date -u +%Y%m%d-%H%M%S)"
+curl -fsS -X POST http://127.0.0.1:8080/records -H 'Content-Type: application/json' -d "{\"title\":\"$MARKER\"}"
+./backup.sh
+DUMP=$(ls -t backups/*.dump | head -n1)
+./restore.sh "$DUMP" "$MARKER"
+```
+
+Expected output includes `PASS: backup created` and `PASS: backup restored`. Backup files stay under `backups/` and must not be committed.
 
 ## Your work
 
