@@ -127,3 +127,88 @@
 - Retest evidence: `fix-nginx-upstream-status.txt` shows healthy app containers, and `fix-nginx-upstream-http-health.txt` shows HTTP 200 for all four public paths.
 - Related commit: fix-nginx-upstream
 - Remaining uncertainty: Repeat `/instance` requests through NGINX to confirm traffic reaches both app instances.
+
+## 2026-09-13 - Part 2 services needed isolation and persistence
+
+- Symptom: PostgreSQL and Redis were published to the host, NGINX shared the backend network, PostgreSQL data was temporary, and Redis persistence was disabled.
+- Hypothesis: The Compose file did not meet the Part 2 networking and storage requirements.
+- Command or test:
+
+  ```powershell
+  docker compose -p barq-assessment config
+  docker compose -p barq-assessment ps
+  docker network inspect barq-assessment_frontend
+  docker network inspect barq-assessment_backend
+  ```
+
+- Root cause: The original Compose configuration exposed extra ports and did not store the dependency data in the correct volumes.
+- Fix: Only NGINX publishes port `8080`. NGINX uses frontend only, the apps use both networks, and PostgreSQL and Redis use backend only. Named volumes now store PostgreSQL and Redis data.
+- Retest evidence: All five containers started successfully. Only NGINX showed a published host port, and network inspection showed the expected members.
+- Related commit: `60d482f docker-networking-nginx`.
+- Remaining uncertainty: Part 3 still needs to prove that data survives container recreation.
+
+## 2026-09-13 - PostgreSQL failed after moving secrets to `.env`
+
+- Symptom: PostgreSQL was healthy, but `/ready` and `/records` returned HTTP 503.
+- Hypothesis: The existing PostgreSQL volume still stored the previous password.
+- Command or test:
+
+  ```powershell
+  docker compose -p barq-assessment ps
+  docker logs postgres
+  curl.exe -i http://127.0.0.1:8080/ready
+  ```
+
+- Actual output: PostgreSQL logged an authentication failure for `barq_app`. The app reported PostgreSQL as unavailable while Redis was ready.
+- Failed attempt: Connecting with the role `postgres` failed because this database was initialized with `barq_app` as its main role.
+- Root cause: `POSTGRES_PASSWORD` only sets the password when PostgreSQL initializes a new data directory. It does not update a role inside an existing volume.
+- Fix: The `barq_app` role password was updated to match the local ignored `.env` file. The volume was not deleted.
+- Retest evidence: `/ready` returned HTTP 200, `/records` created a record with HTTP 201, and listing records returned HTTP 200.
+- Related commit: The secret configuration is in `60d482f docker-networking-nginx`; the role update was a local database command.
+- Remaining uncertainty: The password should be managed by a proper secret manager in production.
+
+## 2026-09-14 - NGINX had no container health check
+
+- Symptom: NGINX was running, but `docker compose ps` only showed `Up` instead of `healthy`.
+- Hypothesis: The NGINX service had no health-check configuration.
+- Command or test:
+
+  ```powershell
+  docker inspect --format "{{json .Config.Healthcheck}}" nginx
+  docker exec nginx nginx -t
+  ```
+
+- Actual output: The health-check value was empty, while the NGINX configuration syntax was valid.
+- Root cause: No NGINX health check was defined in `docker-compose.yml`.
+- Fix: Added `/nginx-health` to NGINX and configured Docker to request it with `curl`.
+- Retest evidence: `docker compose ps` showed NGINX as `healthy`, and `/nginx-health` returned HTTP 200.
+- Related commit: validate-and-failure-tests
+- Remaining uncertainty: This check proves that NGINX responds, but the application dependencies are checked separately by `/ready`.
+
+## 2026-09-14 - The validation script was not implemented
+
+- Symptom: `validate.py` required
+- Hypothesis: The placeholder needed to be replaced with the checks listed in Part 3.
+- Command or test:
+
+  ```powershell
+  python validate.py
+  ```
+
+- Failed attempt: The first test sent 10 `/instance` requests and only found `app-01`. NGINX had 16 workers, so 10 requests were not enough to prove both backends.
+- Fix: Implemented bounded readiness, endpoint, backend identity, PostgreSQL, Redis, container health, port, and network checks. The identity sample was increased to 40 requests.
+- Retest evidence: Every check printed `PASS`, both `app-01` and `app-02` were found, and the script exited with code 0.
+- Related commit: validate-and-failure-tests
+## 2026-09-14 - The backend failure test was not implemented
+
+- Symptom: `failure_test.py` required
+- Hypothesis: The test needed to stop one backend, measure requests, restore it, and prove recovery.
+- Command or test:
+
+  ```powershell
+  python failure_test.py
+  ```
+
+- Fix: The script stops `app-01`, sends 40 requests through NGINX, counts successes and errors, and starts `app-01` again in a cleanup block.
+- Retest evidence: While `app-01` was stopped, 21 requests succeeded through `app-02` and 19 returned errors. After restart, `app-01` became healthy and served a request again.
+- Related commit: validate-and-failure-tests

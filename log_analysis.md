@@ -149,3 +149,4 @@ docker exec nginx wget -qO- http://app-01:8080/health
 docker exec nginx wget -qO- http://app-02:8080/health
 docker network ls
 docker inspect nginx app-01 app-02 postgres redis
+```

@@ -15,4 +15,11 @@
 - How it was independently verified: reviewed the code
 - Related commit: log-analysis
 
+- Tool/model: OpenAI Codex (GPT-5)
+- Purpose: used AI to help implement `validate.py` and `failure_test.py` with the given scenarios in the report
+- Files or decisions affected: `validate.py` and `failure_test.py`
+- What was changed or rejected: N/A
+- How it was independently verified: reviewed the code and the inspected the output
+- Related commit: validate-and-failure-tests
+
 You may use AI and external resources. You must understand and demonstrate the work.
