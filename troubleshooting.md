@@ -212,3 +212,27 @@
 - Fix: The script stops `app-01`, sends 40 requests through NGINX, counts successes and errors, and starts `app-01` again in a cleanup block.
 - Retest evidence: While `app-01` was stopped, 21 requests succeeded through `app-02` and 19 returned errors. After restart, `app-01` became healthy and served a request again.
 - Related commit: validate-and-failure-tests
+
+## 2026-09-14 - PostgreSQL record survived container recreation
+
+- Symptom: Part 3 requires proof that a PostgreSQL record survives app and PostgreSQL container recreation.
+- Hypothesis: The named `postgres-data` volume keeps the record when the PostgreSQL container is replaced.
+- Command or test:
+
+  ```powershell
+  docker compose -p barq-assessment ps
+  $marker="persistence-$(Get-Date -Format 'yyyyMMdd-HHmmss')"; $body=@{title=$marker}|ConvertTo-Json -Compress; $created=Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8080/records' -ContentType 'application/json' -Body $body; $created|ConvertTo-Json
+  $recordsBefore=Invoke-RestMethod 'http://127.0.0.1:8080/records'; $foundBefore=@($recordsBefore.records|Where-Object {$_.title -eq $marker}); if($foundBefore.Count -gt 0){'PASS: record exists before recreation'}else{throw 'Record was not found before recreation'}
+  $beforeId=docker inspect --format "{{.Id}}" postgres; "Before container ID: $beforeId"
+  docker inspect postgres --format "{{range .Mounts}}{{.Name}} -> {{.Destination}}{{println}}{{end}}"
+  docker compose -p barq-assessment up -d --force-recreate postgres app-01 app-02
+  $ready=$false; for($attempt=1;$attempt -le 30;$attempt++){try{$response=Invoke-RestMethod 'http://127.0.0.1:8080/ready';if($response.status -eq 'ready'){$ready=$true;break}}catch{};Start-Sleep -Seconds 1};if($ready){'PASS: application became ready'}else{throw 'Application did not become ready within 30 seconds'}
+  $afterId=docker inspect --format "{{.Id}}" postgres; "After container ID: $afterId"; "Container changed: $($beforeId -ne $afterId)"
+  $recordsAfter=Invoke-RestMethod 'http://127.0.0.1:8080/records'; $foundAfter=@($recordsAfter.records|Where-Object {$_.title -eq $marker}); if($foundAfter.Count -gt 0){'PASS: record survived container recreation';$foundAfter|Format-List}else{throw 'FAIL: record was lost'}
+  ```
+
+- Actual output: The marker `persistence-20260914-065250` was created as record id `10`. The PostgreSQL container ID changed from `f31ceeff6d0696ebbf3978d876a055dc63bc7ba6893c1508c78cb7ec1838445f` to `709da06a15332247ba75149ab66646353b150b941d105b5b12e3e294815e5b05`. The `barq-assessment_postgres-data` volume remained mounted at `/var/lib/postgresql/data`.
+- Fix or proof action: Recreated `postgres`, `app-01`, and `app-02` with `--force-recreate` without removing the named volume.
+- Retest evidence: `/ready` returned HTTP 200, all five services became healthy, and the record with the same marker was found after recreation. The test printed `CONTAINER_CHANGED=True` and `PASS: record survived container recreation`.
+- Related commit: persistence-proof
+- Remaining uncertainty: This proves persistence during normal container recreation on the same Docker host. Backup and restore still need to be implemented and tested.

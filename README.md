@@ -15,7 +15,7 @@ Hidden issue types and count are not disclosed. Investigate this project; do not
 - Flask API, PostgreSQL, Redis, Docker and NGINX starter files.
 - Three historical logs, a question template and documentation templates.
 - App-only tests and a recorded challenge script.
-- Unimplemented validation, failure-test and backup/restore placeholders.
+- Validation and failure-test scripts for Part 3; backup/restore still needs to be completed.
 
 Use synthetic lab accounts/data only. Supplied values are for this disposable exercise,
 never for real services. Keep the lab on your local machine; do not expose it publicly.
@@ -61,11 +61,29 @@ python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ```
 
+## Persistence proof
+
+This test proves that a PostgreSQL record survives container recreation because the database uses a named volume. Run these commands in the same PowerShell window so `$marker` and the container IDs remain available.
+
+```powershell
+docker compose -p barq-assessment ps
+$marker="persistence-$(Get-Date -Format 'yyyyMMdd-HHmmss')"; $body=@{title=$marker}|ConvertTo-Json -Compress; $created=Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8080/records' -ContentType 'application/json' -Body $body; $created|ConvertTo-Json
+$recordsBefore=Invoke-RestMethod 'http://127.0.0.1:8080/records'; $foundBefore=@($recordsBefore.records|Where-Object {$_.title -eq $marker}); if($foundBefore.Count -gt 0){'PASS: record exists before recreation'}else{throw 'Record was not found before recreation'}
+$beforeId=docker inspect --format "{{.Id}}" postgres; "Before container ID: $beforeId"
+docker inspect postgres --format "{{range .Mounts}}{{.Name}} -> {{.Destination}}{{println}}{{end}}"
+docker compose -p barq-assessment up -d --force-recreate postgres app-01 app-02
+$ready=$false; for($attempt=1;$attempt -le 30;$attempt++){try{$response=Invoke-RestMethod 'http://127.0.0.1:8080/ready';if($response.status -eq 'ready'){$ready=$true;break}}catch{};Start-Sleep -Seconds 1};if($ready){'PASS: application became ready'}else{throw 'Application did not become ready within 30 seconds'}
+$afterId=docker inspect --format "{{.Id}}" postgres; "After container ID: $afterId"; "Container changed: $($beforeId -ne $afterId)"
+$recordsAfter=Invoke-RestMethod 'http://127.0.0.1:8080/records'; $foundAfter=@($recordsAfter.records|Where-Object {$_.title -eq $marker}); if($foundAfter.Count -gt 0){'PASS: record survived container recreation';$foundAfter|Format-List}else{throw 'FAIL: record was lost'}
+docker compose -p barq-assessment ps
+```
+
+Expected proof: the PostgreSQL container ID changes, the named volume is mounted at `/var/lib/postgresql/data`, readiness returns `200`, and the record with the same timestamped title is found afterward. Do not run `docker compose down -v` during this test because it deletes the volume.
+
 ## Your work
 
 - Complete [assessment/TASK.md](assessment/TASK.md).
-- Implement validate.py, failure_test.py, backup.sh and restore.sh, or documented equivalents.
-  Placeholders deliberately exit 2; they are unfinished deliverables, not validation evidence.
+- Complete validate.py, failure_test.py, backup.sh and restore.sh, or documented equivalents.
 - Create .github/workflows/ci.yml yourself.
 - Complete the root report templates and docs/EVIDENCE_INDEX.md.
 - Add architecture.png or architecture.pdf.

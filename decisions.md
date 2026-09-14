@@ -68,7 +68,17 @@ These are the main decisions I made during Parts 1 and 2. They describe why I ch
 - Evidence / commit: `60d482f docker-networking-nginx`; Docker inspection showed both named volumes mounted at the correct data paths.
 - Production improvement: Add automated backups, tested restores, storage monitoring, and off-machine backup copies.
 
-## 7. Add restart policies and small resource limits
+## 7. Use a unique timestamped record for the persistence test
+
+- Choice: I create the persistence record with a title such as `persistence-20260914-143000`, using the current timestamp.
+- Why: this script is meant to be run as part of a repeatable test . If you used a fixed label like `"test-record"` every time, you couldn't tell whether a record you find later is proof of persistence or just leftover from a previous test run.
+- Alternative: Use the same title, such as `test-record`, every time.
+- Trade-off: A new title makes the result clear, but it leaves extra test records in the database until they are cleaned up.
+- Assumption: The timestamp is precise enough that the same title will not be created twice during the test.
+- Evidence / commit: The command is documented in `README.md` and `troubleshooting.md`. The marker `persistence-20260914-065250` was found after recreation, the PostgreSQL container ID changed, and the named volume remained mounted. Related commit: `persistence-proof`.
+- Production improvement: Use a test-run ID and clean up test data after the proof, while keeping the backup evidence separately.
+
+## 8. Add restart policies and small resource limits
 
 - Choice: All services use `restart: unless-stopped`. The apps use `0.50` CPU and `256 MB`, PostgreSQL uses `1.0` CPU and `512 MB`, and Redis and NGINX use `0.50` CPU and `128 MB`.
 - Why: The restart policy helps services recover after an unexpected exit. Resource limits stop one container from using all resources on the machine.
@@ -79,7 +89,7 @@ These are the main decisions I made during Parts 1 and 2. They describe why I ch
 - Evidence / commit: `60d482f docker-networking-nginx`; Docker inspection confirmed the memory and CPU limits.
 - Production improvement: Measure real CPU and memory usage, then set requests, limits, and alerts using those measurements.
 
-## 8. Analyze the supplied logs with a small Python script
+## 9. Analyze the supplied logs with a small Python script
 
 - Choice: I used `scripts/analyze_logs.py` to read all three supplied logs, calculate the requested counts, connect events by request ID, and print the incident timeline.
 - Why: A script makes the results repeatable and reduces mistakes from counting records manually. The original log files remain unchanged.

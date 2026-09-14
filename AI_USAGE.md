@@ -22,4 +22,11 @@
 - How it was independently verified: reviewed the code and the inspected the output
 - Related commit: validate-and-failure-tests
 
+- Tool/model: OpenAI Codex (GPT-5)
+- Purpose: used AI to write simple PowerShell commands for creating a new persistance record
+- Files or decisions affected: N/A
+- What was changed or rejected: added a timestamped record marker
+- How it was independently verified: reviewed the commands against the Compose named volume and `/records` endpoint, then ran the test. The PostgreSQL container ID changed, readiness returned HTTP 200, and the timestamped record was found after recreation.
+- Related commit: persistence-proof
+
 You may use AI and external resources. You must understand and demonstrate the work.
