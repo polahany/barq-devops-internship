@@ -11,3 +11,5 @@ evidence/local/
 backups/
 *.dump
 /config/app.env
+.idea/
+tmp/
