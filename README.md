@@ -36,7 +36,6 @@ Run shell scripts from WSL or Git Bash. Run the Python commands from the reposit
 ```bash
 git status
 git log -5 --oneline
-cp .env.example .env
 docker version
 docker compose version
 docker compose -p barq-assessment up --build -d
@@ -56,6 +55,7 @@ curl -i http://127.0.0.1:8080/ready
 curl -i http://127.0.0.1:8080/instance
 curl -i http://127.0.0.1:8080/records
 curl -i http://127.0.0.1:8080/counter
+for i in $(seq 1 60); do curl -sS http://127.0.0.1:8080/instance; echo; done | sort | uniq -c
 ```
 
 Repeat `/instance` several times. The responses should include both `app-01` and
@@ -88,6 +88,16 @@ host-port exposure, and frontend/backend network membership. It prints `PASS` or
 and failed requests, starts `app-01` again, waits for it to become healthy, and
 proves that it serves a request after recovery.
 
+command to test failure
+```aiignore
+docker stop app-01
+for i in $(seq 1 40); do curl -sS --max-time 4 -w ' HTTP %{http_code}\n' http://127.0.0.1:8080/instance || true; done
+docker start app-01
+until [ "$(docker inspect -f '{{.State.Health.Status}}' app-01)" = "healthy" ]; do sleep 1; done
+docker compose -p barq-assessment ps -a
+for i in $(seq 1 60); do curl -sS http://127.0.0.1:8080/instance; echo; done | sort | uniq -c
+```
+
 Analyze the supplied historical logs with:
 
 ```bash
@@ -104,16 +114,19 @@ containers without deleting the named volume, and checks that the record remains
 Run the commands in one PowerShell window:
 
 ```powershell
-docker compose -p barq-assessment ps
-$marker="persistence-$(Get-Date -Format 'yyyyMMdd-HHmmss')"; $body=@{title=$marker}|ConvertTo-Json -Compress; $created=Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8080/records' -ContentType 'application/json' -Body $body; $created|ConvertTo-Json
-$recordsBefore=Invoke-RestMethod 'http://127.0.0.1:8080/records'; $foundBefore=@($recordsBefore.records|Where-Object {$_.title -eq $marker}); if($foundBefore.Count -gt 0){'PASS: record exists before recreation'}else{throw 'Record was not found before recreation'}
-$beforeId=docker inspect --format "{{.Id}}" postgres; "Before container ID: $beforeId"
-docker inspect postgres --format "{{range .Mounts}}{{.Name}} -> {{.Destination}}{{println}}}"
+MARKER="video-persistence-$(date -u +%Y%m%d-%H%M%S)"
+curl -fsS -X POST http://127.0.0.1:8080/records -H 'Content-Type: application/json' -d "{\"title\":\"$MARKER\"}"
+BEFORE_ID=$(docker inspect -f '{{.Id}}' postgres)
+echo "Before PostgreSQL container ID: $BEFORE_ID"
+docker inspect postgres --format '{{range .Mounts}}{{.Name}} -> {{.Destination}}{{println}}{{end}}'
 docker compose -p barq-assessment up -d --force-recreate postgres app-01 app-02
-$ready=$false; for($attempt=1;$attempt -le 30;$attempt++){try{$response=Invoke-RestMethod 'http://127.0.0.1:8080/ready';if($response.status -eq 'ready'){$ready=$true;break}}catch{};Start-Sleep -Seconds 1};if($ready){'PASS: application became ready'}else{throw 'Application did not become ready within 30 seconds'}
-$afterId=docker inspect --format "{{.Id}}" postgres; "After container ID: $afterId"; "Container changed: $($beforeId -ne $afterId)"
-$recordsAfter=Invoke-RestMethod 'http://127.0.0.1:8080/records'; $foundAfter=@($recordsAfter.records|Where-Object {$_.title -eq $marker}); if($foundAfter.Count -gt 0){'PASS: record survived container recreation';$foundAfter|Format-List}else{throw 'FAIL: record was lost'}
-docker compose -p barq-assessment ps
+until [ "$(docker inspect -f '{{.State.Health.Status}}' postgres)" = "healthy" ] && [ "$(docker inspect -f '{{.State.Health.Status}}' app-01)" = "healthy" ] && [ "$(docker inspect -f '{{.State.Health.Status}}' app-02)" = "healthy" ]; do sleep 1; done
+docker exec nginx nginx -s reload
+until curl -fsS http://127.0.0.1:8080/ready >/dev/null; do sleep 1; done
+AFTER_ID=$(docker inspect -f '{{.Id}}' postgres)
+echo "After PostgreSQL container ID: $AFTER_ID"
+test "$BEFORE_ID" != "$AFTER_ID" && echo "PASS: PostgreSQL container was recreated"
+curl -fsS http://127.0.0.1:8080/records | MARKER="$MARKER" python3 -c 'import json,os,sys; records=json.load(sys.stdin)["records"]; assert any(item["title"] == os.environ["MARKER"] for item in records); print("PASS: timestamped record survived recreation")'
 ```
 
 The timestamp makes each test record unique, so a record found after recreation is
